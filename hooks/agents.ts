@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Agents } from '../types'
 import { PRICING } from './history'
 import { job } from './activity'
+import { runPy } from './py'
 
 export const NO_AGENTS: Agents = { main: { cost: 0, input: 0, cached: 0, output: 0, calls: 0, model: '' }, agents: [], updated: 0 }
 const agents = atom({ plugin: 'tasklane', key: 'agents' } as const, NO_AGENTS, { shape: 'agents-1' })
@@ -14,7 +15,7 @@ const USAGE =
   PRICING +
   String.raw`
 session = sys.argv[1]
-found = glob.glob(os.path.expanduser(f'~/.claude/projects/*/{session}.jsonl'))
+found = glob.glob(os.path.join(os.path.expanduser(os.environ.get('CLAUDE_CONFIG_DIR') or '~/.claude'), 'projects', '*', f'{session}.jsonl'))
 if not found:
     print(json.dumps({'found': False})); sys.exit()
 
@@ -92,20 +93,15 @@ export async function readAgents($: EngineInterface, session: string) {
     do {
       again = false
       await job($, 'usage', 'running', 'Totting up the main chat and subagents')
-      const ran = await $.process.run(['python3', '-I', '-c', USAGE, session], { timeoutMs: 120000 }).catch(() => undefined)
-      let got: Read | undefined
-      try {
-        got = JSON.parse(ran?.stdout ?? '') as Read
-      } catch {
-        got = undefined
-      }
+      const { out, why } = await runPy($, USAGE, [session], 120000)
+      const got = out as Read | undefined
       // Saved only when whole: the view reads every field.
       if (got?.found && got.main && Array.isArray(got.agents)) {
         const now = await $.clock.now()
         const { main, agents: list } = got
         await update($, agents, () => ({ main, agents: list, updated: now }))
         await job($, 'usage', 'done', `Main chat and ${list.length === 1 ? '1 subagent' : `${list.length} subagents`}`)
-      } else await job($, 'usage', got && !got.found ? 'done' : 'failed', got && !got.found ? 'No transcript yet' : "Couldn't read the transcripts")
+      } else await job($, 'usage', got && !got.found ? 'done' : 'failed', got && !got.found ? 'No transcript yet' : why || 'The usage reader answered in an unexpected shape')
     } while (again)
   } finally {
     reading = false
