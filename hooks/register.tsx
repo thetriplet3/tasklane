@@ -64,7 +64,10 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const session = await $.session.id()
     const saved = (await $.store.get(`board:${session}`)) as Board | undefined
-    await update($, board, b => (b.session === session ? b : saved ? normalize(saved) : emptyBoard(session)))
+    // A board loaded now counts cost from now: what Claude spent before belongs to turns already on it, or to none.
+    const loading = (await read($, board)).session !== session
+    const spent = loading ? ((await $.session.usage().catch(() => undefined))?.cost?.usd ?? 0) : 0
+    await update($, board, b => (b.session === session ? b : { ...(saved ? normalize(saved) : emptyBoard(session)), baseline: spent }))
     await $.command.register({ name: 'tasklane', description: 'Open Tasklane' })
     void open($)
     void importHistory($)

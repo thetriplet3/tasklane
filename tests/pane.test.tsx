@@ -182,7 +182,9 @@ test('a turn ends every running card, the work shared among them', async ($, on)
   mock.store(on, { 'board:s3': two })
   mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 's3' }))
-  on('session.usage', () => ({ value: { cost: { usd: 3 } } }) as never)
+  // Claude had spent $5 before the board loaded; the turn adds $3, and only that is the turn's.
+  let spent = 5
+  on('session.usage', () => ({ value: { cost: { usd: spent } } }) as never)
   on('command.register', () => ({ value: { command: 'tasklane' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -198,6 +200,7 @@ test('a turn ends every running card, the work shared among them', async ($, on)
     return { value: { exitCode: 0, stdout: rows ? JSON.stringify({ b: 'msg-b' }) : '{"found": false}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  spent = 8
   await $.turn.complete({ answer: 'Which one first?', durationMs: 1000, isAborted: false } as never)
   const ui = await $.ui.mount({ ...pane('desktop', 120) })
   expect(await shown(ui as never)).toMatch(/Running 0/)
