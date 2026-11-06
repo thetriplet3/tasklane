@@ -5,6 +5,7 @@ import type { Board, Link, Turn } from '../types'
 import { emptyBoard, isFollowUp, parseStarts, pastCards } from './board'
 import type { Past } from './board'
 import { ask, job } from './activity'
+import { runPy } from './py'
 import { change } from './state'
 
 const board = atom({ plugin: 'tasklane', key: 'board' } as const, emptyBoard(''), { shape: 'board-2' })
@@ -48,7 +49,7 @@ def ms(ts):
 // Reads the session's transcript file, which is too big to hand the module whole, into one line per message typed.
 const READER = PRICING + String.raw`
 session, before = sys.argv[1], int(sys.argv[2])
-found = glob.glob(os.path.expanduser(f'~/.claude/projects/*/{session}.jsonl'))
+found = glob.glob(os.path.join(os.path.expanduser(os.environ.get('CLAUDE_CONFIG_DIR') or '~/.claude'), 'projects', '*', f'{session}.jsonl'))
 if not found:
     print(json.dumps({'found': False})); sys.exit()
 
@@ -144,15 +145,13 @@ export async function importHistory($: EngineInterface) {
   }
   await job($, 'history', 'running', 'Reading the transcript')
   const before = b.imported ? await $.clock.now() : (b.cards[0]?.started ?? (await $.clock.now()))
-  const ran = await $.process.run(['python3', '-I', '-c', READER, b.session, String(before)], { timeoutMs: 120000 }).catch(() => undefined)
-  let got: Read
-  try {
-    got = JSON.parse(ran?.stdout ?? '') as Read
-  } catch {
-    // The reader failed (no python3, or a transcript it cannot parse); the board keeps going from now and tries again next start.
-    await job($, 'history', 'failed', ran ? "Couldn't read the transcript" : "Couldn't run python3 to read the transcript")
+  const { out, why } = await runPy($, READER, [b.session, String(before)], 120000)
+  // The reader failed (no Python, or a transcript it cannot parse); the board keeps going from now and tries again next start.
+  if (!out) {
+    await job($, 'history', 'failed', why)
     return
   }
+  const got = out as Read
   if (!got.found || got.prompts.length === 0) {
     await change($, x => ({ ...x, imported: true }))
     await job($, 'history', 'done', 'No earlier messages')
@@ -199,7 +198,7 @@ export async function importHistory($: EngineInterface) {
 // Finds the chat row (the transcript's message id) of each task's opening message, for "Go to message".
 const ROWS = String.raw`import glob, json, os, sys
 session, want = sys.argv[1], json.loads(sys.argv[2])
-found = glob.glob(os.path.expanduser(f'~/.claude/projects/*/{session}.jsonl'))
+found = glob.glob(os.path.join(os.path.expanduser(os.environ.get('CLAUDE_CONFIG_DIR') or '~/.claude'), 'projects', '*', f'{session}.jsonl'))
 got = {}
 for line in (open(found[0], encoding='utf-8', errors='replace') if found else []):
     if '"type":"user"' not in line: continue
@@ -217,13 +216,9 @@ export async function findRows($: EngineInterface) {
   const b = await read($, board)
   const want = b.cards.filter(c => c.row === undefined).map(c => [c.id, c.first ?? c.msgs[0] ?? ''] as const).filter(([, t]) => t !== '')
   if (want.length === 0 || b.session === '') return
-  const ran = await $.process.run(['python3', '-I', '-c', ROWS, b.session, JSON.stringify(want)], { timeoutMs: 60000 }).catch(() => undefined)
-  let got: Record<string, string>
-  try {
-    got = JSON.parse(ran?.stdout ?? '') as Record<string, string>
-  } catch {
-    return
-  }
+  const { out } = await runPy($, ROWS, [b.session, JSON.stringify(want)], 60000)
+  if (!out) return
+  const got = out as Record<string, string>
   // A message the transcript doesn't hold yet is looked for again after the next turn; once found it stays.
   if (Object.keys(got).length > 0) await change($, x => ({ ...x, cards: x.cards.map(c => (got[c.id] && c.row === undefined ? { ...c, row: got[c.id] } : c)) }))
 }
