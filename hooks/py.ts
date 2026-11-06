@@ -16,9 +16,10 @@ export async function runPy($: EngineInterface, script: string, args: string[], 
       found = py
       return { out, why: '' }
     } catch {
-      // A Python that ran and failed is the real error; a missing one (Windows' store alias exits 9009) is skipped.
+      // A Python that ran and failed is the real error. A missing one is skipped: Windows' store alias may exit 9009,
+      // or exit 0 having printed nothing at all.
       const last = ran.stderr.trim().split('\n').at(-1)?.trim() ?? ''
-      if (ran.exitCode === 9009 || /not found|was not found|No such file/i.test(last)) continue
+      if (ran.exitCode === 9009 || (ran.stdout.trim() === '' && last === '') || /not found|was not found|No such file/i.test(last)) continue
       why = ran.isStdoutTruncated ? 'The reader’s output was too big to read' : `${py[0]} failed: ${last.slice(0, 160) || `exit ${ran.exitCode}`}`
       break
     }

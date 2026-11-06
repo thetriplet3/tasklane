@@ -1,6 +1,6 @@
 {
   "name": "tasklane",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A kanban pane for long sessions: each request becomes a task card with its cost, and messages between sessions show as connections.",
   "types": "./types/index.d.ts",
   "author": {

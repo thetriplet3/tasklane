@@ -224,8 +224,9 @@ test('a machine without python3 falls back to python, and a reader that fails sa
   on('process.run', (_, e) => {
     tried.push(e.argv[0]!)
     const done = (exitCode: number, stdout: string, stderr: string) => ({ value: { exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false } })
-    // Windows' store alias: "python3" exists but only says Python isn't installed.
-    if (e.argv[0] === 'python3') return done(9009, '', 'Python was not found; run without arguments to install from the Microsoft Store')
+    // Windows' store aliases: "python3" exits 0 having printed nothing, "python" says Python isn't installed.
+    if (e.argv[0] === 'python3') return done(0, '', '')
+    if (e.argv[0] === 'python') return done(9009, '', 'Python was not found; run without arguments to install from the Microsoft Store')
     if (e.argv.join(' ').includes('subagents')) return done(1, '', 'Traceback (most recent call last):\n  ...\nPermissionError: [Errno 13] Permission denied')
     return done(0, '{"found": false}', '')
   })
@@ -235,7 +236,7 @@ test('a machine without python3 falls back to python, and a reader that fails sa
   for (let i = 0; i < 50 && !/Permission denied/.test(await shown(ui as never)); i++) await new Promise(r => setTimeout(r, 10))
   const text = await shown(ui as never)
   expect(text).toMatch(/No earlier messages/)
-  expect(text).toMatch(/python failed: PermissionError: \[Errno 13\] Permission denied/)
-  expect(tried).toContain('python')
+  expect(text).toMatch(/py failed: PermissionError: \[Errno 13\] Permission denied/)
+  expect(tried).toContain('py')
   await ui.unmount()
 })
