@@ -1,6 +1,0 @@
-{
-  "name": "tasklane",
-  "description": "Tasklane: a kanban pane of a Claude session's tasks, cost and usage.",
-  "owner": { "name": "Xenoviz", "url": "https://github.com/xenoviz" },
-  "plugins": [{ "name": "tasklane", "source": "./", "description": "A kanban pane for long sessions: each request becomes a task card with its cost, and messages between sessions show as connections." }]
-}

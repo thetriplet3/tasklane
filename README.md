@@ -21,7 +21,7 @@ Tasklane is listed in the [Xenoviz marketplace](https://github.com/xenoviz/claud
 
 To update later, run `claude plugin marketplace update xenoviz` and `claude plugin update tasklane@xenoviz`, then restart Claude.
 
-Installed it as `tasklane@tasklane` before? That still works. To move to the Xenoviz marketplace, uninstall it (`claude plugin uninstall tasklane@tasklane`) and install it as above.
+Installed it as `tasklane@tasklane` before? That listing is gone and won't update any more. Remove it with `claude plugin uninstall tasklane@tasklane` and `claude plugin marketplace remove tasklane`, then install it as above.
 
 ## Good to know
 
