@@ -415,7 +415,7 @@ async function drawBoard($: EngineInterface, e: RenderInput<'Pane'>) {
           </Box>
           {!Svg && (
             <Text size="caption" dimColor tabular>
-              {money(sum)}
+              {` ${money(sum)}`}
             </Text>
           )}
         </Box>
