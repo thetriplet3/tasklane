@@ -24,7 +24,7 @@ const activity = atom({ plugin: 'tasklane', key: 'activity' } as const, NO_ACTIV
 
 type Art = { source: string; width: number; height: number }
 
-export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
+async function drawBoard($: EngineInterface, e: RenderInput<'Pane'>) {
   const els = $.ui.resolve(e)
   const { Box, Text, Button } = els
   // The phones draw no text field yet, and the terminal no vector art.
@@ -72,8 +72,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const turnLabel = (t: { at: number; cost: number; card?: string }) =>
     `${money(t.cost)}, ${ago(now - t.at)} ago${titleOf(t.card) ? ` · ${titleOf(t.card)}` : ''}`
 
-  // Moving between views keeps the search.
-  const setView = (to: View) => () => update($, view, x => ({ ...to, q: x.q }))
+  // Moving between views keeps the search, the folded sections and the sort, so Back returns to the same layout.
+  const setView = (to: View) => () => update($, view, x => ({ q: x.q, closed: x.closed, sort: x.sort, ...to }))
   const q = (v.q ?? '').trim()
   const search = (text: string) => void update($, view, x => ({ ...x, q: text }))
   const move = (id: string, status: Status) => async () => {
@@ -517,7 +517,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ) : (
           <Box borderStyle="round" borderColor="subtle" padding="sm">
             <Text dimColor>
-              No board for this session on this Mac. It may run in the cloud or on another computer, or not have this mod turned
+              No board for this session on this computer. It may run in the cloud or on another computer, or not have this mod turned
               on.
             </Text>
           </Box>
@@ -775,4 +775,30 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {activityPanel}
     </Box>
   )
+}
+
+// A view that fails to draw would leave the pane blank, and the view is kept across reloads; say what broke instead,
+// with a way back to the board.
+export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
+  try {
+    return await drawBoard($, e)
+  } catch (err) {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const why = (err instanceof Error ? err.message : String(err)).slice(0, 300)
+    return (
+      <Box flexDirection="column" gap="sm" padding="sm" borderStyle="round" borderColor="error">
+        <Text color="error" weight="medium">
+          Tasklane couldn't draw this view
+        </Text>
+        <Text key="draw-error" dimColor>
+          {why}
+        </Text>
+        <Box>
+          <Button key="reset" variant="primary" onPress={() => update($, view, x => ({ q: x.q }))}>
+            Back to the board
+          </Button>
+        </Box>
+      </Box>
+    )
+  }
 }

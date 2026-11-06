@@ -108,8 +108,14 @@ test('the saved board draws on every surface and width, and its controls work', 
   expect(await ui.find({ key: 'rule' })).toBeDefined()
 
   expect((await ui.find({ key: 'l:billing-api' }))?.text).toContain('Cut search tool calls')
+  await ui.press({ key: 'toggle:rules' })
   await ui.press({ key: 'l:billing-api' })
-  expect(await ui.find({ type: 'Text', text: /No board for this session on this Mac/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /No board for this session on this computer/ })).toBeDefined()
+  await ui.press({ key: 'back' })
+  expect(await shown(ui as never)).toMatch(/Needs you/)
+  expect(await ui.find({ key: 'l:billing-api' })).toBeDefined()
+  // Back keeps the sections folded as they were.
+  expect(await ui.find({ key: 'rule' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -240,5 +246,21 @@ test('a machine without python3 falls back to python, and a reader that fails sa
   expect(text).toMatch(/No earlier messages/)
   expect(text).toMatch(/py failed: PermissionError: \[Errno 13\] Permission denied/)
   expect(tried).toContain('py')
+  await ui.unmount()
+})
+
+test('a board that fails to draw shows why, with a way back, instead of a blank pane', async ($, on) => {
+  // A card saved without its messages: drawing it throws.
+  mock.store(on, { 'board:s5': { ...SAVED, session: 's5', cards: [{ ...card('x', 'Broken', 'you', 1), msgs: null }] } })
+  mock.clock(on, { now: NOW })
+  on('session.id', () => ({ value: 's5' }))
+  on('command.register', () => ({ value: { command: 'tasklane' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"found": false}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount(pane('desktop', 120))
+  expect(await ui.find({ type: 'Text', text: "Tasklane couldn't draw this view" })).toBeDefined()
+  expect(await ui.find({ key: 'reset' })).toBeDefined()
   await ui.unmount()
 })
