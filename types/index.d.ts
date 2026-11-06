@@ -54,7 +54,8 @@ export type Spend = { calls: number; failed: number; input: number; cached: numb
 export type Activity = { jobs: Partial<Record<JobKind, Job>>; spend: Partial<Record<Purpose, Spend>> }
 
 // `closed` lists the sections and columns the person folded.
-export type View = { card?: string; peer?: string; q?: string; closed?: string[]; sort?: 'cost' | 'time' }
+// `days` lists the Done days the person opened or folded against the default; `more` the days showing every card.
+export type View = { card?: string; peer?: string; q?: string; closed?: string[]; sort?: 'cost' | 'time'; days?: string[]; more?: string[] }
 
 declare module 'claude-code' {
   interface PluginState {
