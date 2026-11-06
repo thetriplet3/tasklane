@@ -45,11 +45,18 @@ export type Usage = { cost: number; input: number; cached: number; output: numbe
 export type AgentUse = Usage & { id: string; type: string; description: string; at: number; ms: number; finished: boolean }
 export type Agents = { main: Usage; agents: AgentUse[]; updated: number }
 
+// What the mod itself is doing: each background read, and what its Haiku calls cost by purpose.
+export type JobKind = 'history' | 'usage' | 'names'
+export type Job = { state: 'running' | 'done' | 'failed'; step: string; started: number; at: number; ms?: number; runs: number }
+export type Purpose = 'sort' | 'name' | 'backlog'
+export type Spend = { calls: number; failed: number; input: number; cached: number; written: number; output: number; cost: number; ms: number; last: number }
+export type Activity = { jobs: Partial<Record<JobKind, Job>>; spend: Partial<Record<Purpose, Spend>> }
+
 // `closed` lists the sections and columns the person folded.
 export type View = { card?: string; peer?: string; q?: string; closed?: string[]; sort?: 'cost' | 'time' }
 
 declare module 'claude-code' {
   interface PluginState {
-    'tasklane': { board: Shaped<Board>; view: Shaped<View>; agents: Shaped<Agents> }
+    'tasklane': { board: Shaped<Board>; view: Shaped<View>; agents: Shaped<Agents>; activity: Shaped<Activity> }
   }
 }

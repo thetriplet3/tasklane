@@ -19,6 +19,7 @@ import { readAgents } from './agents'
 import { findRows, importHistory } from './history'
 import { PANE, ROWS, change, rowKey } from './state'
 import { drawPane } from './view'
+import { ask, job } from './activity'
 
 // The scan lists what each file reads, so each file names the atoms it touches.
 const board = atom({ plugin: 'tasklane', key: 'board' } as const, emptyBoard(''), { shape: 'board-2' })
@@ -37,12 +38,12 @@ Say what is being done (e.g. "Fix login redirect on Safari"), not what the perso
 
 // A model-written title from what was said so far; it stays the message's own words until one comes back.
 // shortcut: renamed each time a task ends a turn with new messages, one small-model call each; cap it if that adds up.
-async function nameCard($: EngineInterface, id: string, answer: string) {
+async function nameCard($: EngineInterface, id: string, answer: string, purpose: 'name' | 'backlog' = 'name') {
   const c = (await read($, board)).cards.find(x => x.id === id)
   if (!c || (c.named ?? 0) >= c.msgs.length) return
   const said = [c.first ?? '', ...c.msgs].filter((m, i, all) => m !== '' && all.indexOf(m) === i)
   const prompt = `${NAME}\n\nThe person wrote:\n${said.map(m => `- ${m.slice(0, 400)}`).join('\n')}${answer ? `\n\nClaude answered:\n${answer.slice(0, 800)}` : ''}`
-  const reply = await $.model.complete({ model: 'haiku', prompt, maxTokens: 30 }).catch(() => undefined)
+  const reply = await ask($, purpose, { model: 'haiku', prompt, maxTokens: 30 })
   const title = reply?.isAnswered ? reply.text.trim().split('\n')[0]!.replace(/^[\s"'“”]+|[\s"'“”.]+$/g, '').trim() : ''
   if (title === '' || title.length > 80) return
   await change($, b => patchCard(b, id, x => ({ ...x, title, named: x.msgs.length, first: x.first ?? x.msgs[0] })))
@@ -51,7 +52,12 @@ async function nameCard($: EngineInterface, id: string, answer: string) {
 // Tasks typed before titles were model-written, newest first, from what was said alone.
 async function nameBacklog($: EngineInterface) {
   const waiting = (await read($, board)).cards.filter(c => c.id.startsWith('t') && c.named === undefined).slice(-20).reverse()
-  for (const c of waiting) await nameCard($, c.id, '')
+  if (waiting.length === 0) return
+  for (const [i, c] of waiting.entries()) {
+    await job($, 'names', 'running', `Naming earlier tasks, ${i + 1} of ${waiting.length}`)
+    await nameCard($, c.id, '', 'backlog')
+  }
+  await job($, 'names', 'done', `Named ${waiting.length} earlier ${waiting.length === 1 ? 'task' : 'tasks'}`)
 }
 
 export const register: Register = on => {

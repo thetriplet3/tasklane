@@ -3,6 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Agents } from '../types'
 import { PRICING } from './history'
+import { job } from './activity'
 
 export const NO_AGENTS: Agents = { main: { cost: 0, input: 0, cached: 0, output: 0, calls: 0, model: '' }, agents: [], updated: 0 }
 const agents = atom({ plugin: 'tasklane', key: 'agents' } as const, NO_AGENTS, { shape: 'agents-1' })
@@ -90,6 +91,7 @@ export async function readAgents($: EngineInterface, session: string) {
   try {
     do {
       again = false
+      await job($, 'usage', 'running', 'Totting up the main chat and subagents')
       const ran = await $.process.run(['python3', '-I', '-c', USAGE, session], { timeoutMs: 120000 }).catch(() => undefined)
       let got: Read | undefined
       try {
@@ -102,7 +104,8 @@ export async function readAgents($: EngineInterface, session: string) {
         const now = await $.clock.now()
         const { main, agents: list } = got
         await update($, agents, () => ({ main, agents: list, updated: now }))
-      }
+        await job($, 'usage', 'done', `Main chat and ${list.length === 1 ? '1 subagent' : `${list.length} subagents`}`)
+      } else await job($, 'usage', got && !got.found ? 'done' : 'failed', got && !got.found ? 'No transcript yet' : "Couldn't read the transcripts")
     } while (again)
   } finally {
     reading = false

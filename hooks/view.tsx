@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { Color, EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import type { AgentUse, Board, Card, Status, Usage, View } from '../types'
+import type { AgentUse, Board, Card, JobKind, Purpose, Status, Usage, View } from '../types'
+import { NO_ACTIVITY } from './activity'
 import { NO_AGENTS } from './agents'
 import { ago, day, emptyBoard, matches, minutes, money, normalize, patchCard, plural, short, split, withStatus } from './board'
 import { ROWS, change, rowKey } from './state'
@@ -19,6 +20,7 @@ const DAY = 86400000
 const board = atom({ plugin: 'tasklane', key: 'board' } as const, emptyBoard(''), { shape: 'board-2' })
 const view = atom({ plugin: 'tasklane', key: 'view' } as const, {} as View, { shape: 'view-1' })
 const agents = atom({ plugin: 'tasklane', key: 'agents' } as const, NO_AGENTS, { shape: 'agents-1' })
+const activity = atom({ plugin: 'tasklane', key: 'activity' } as const, NO_ACTIVITY, { shape: 'activity-1' })
 
 type Art = { source: string; width: number; height: number }
 
@@ -34,6 +36,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const b = await read($, board)
   const v = await read($, view)
   const ag = await read($, agents)
+  const act = await read($, activity)
   const now = await $.clock.now()
   const width = e.props.bodyColumns ?? 80
   // Four columns side by side when the pane is wide, two when docked, one when narrow.
@@ -522,9 +525,106 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
+  // What the mod itself is doing: its background reads, and what its Haiku calls cost by purpose.
+  const JOBS: { kind: JobKind; name: string }[] = [
+    { kind: 'history', name: 'Reading earlier messages' },
+    { kind: 'usage', name: 'Usage by agent' },
+    { kind: 'names', name: 'Naming earlier tasks' },
+  ]
+  const PURPOSES: { purpose: Purpose; name: string }[] = [
+    { purpose: 'sort', name: 'Sorting earlier messages into tasks' },
+    { purpose: 'name', name: 'Naming tasks after each turn' },
+    { purpose: 'backlog', name: 'Naming earlier tasks' },
+  ]
+  // Haiku calls cost fractions of a cent, so small sums keep four places.
+  const fine = (usd: number) => (usd > 0 && usd < 0.01 ? `$${usd.toFixed(4)}` : money(usd))
+  const secs = (n: number) => (n < 60000 ? `${n < 1000 ? '<1' : Math.round(n / 1000)} s` : minutes(n))
+  const running = JOBS.filter(j => act.jobs[j.kind]?.state === 'running')
+  const spent = PURPOSES.flatMap(p => {
+    const s = act.spend[p.purpose]
+    return s && s.calls > 0 ? [{ ...p, s }] : []
+  })
+  const haiku = spent.reduce((n, p) => n + p.s.cost, 0)
+  const haikuCalls = spent.reduce((n, p) => n + p.s.calls, 0)
+  const jobRow = ({ kind, name }: (typeof JOBS)[number]) => {
+    const j = act.jobs[kind]
+    const mark: { glyph: string; color: Color } = !j
+      ? { glyph: '○', color: 'inactive' }
+      : j.state === 'running'
+        ? { glyph: '◌', color: 'claude' }
+        : j.state === 'done'
+          ? { glyph: '✓', color: 'success' }
+          : { glyph: '✕', color: 'error' }
+    const when = !j ? 'not run yet' : j.state === 'running' ? `running for ${secs(now - j.started)}` : `${j.ms !== undefined ? `took ${secs(j.ms)} · ` : ''}${ago(now - j.at)} ago`
+    return (
+      <Box key={`job:${kind}`} flexDirection="column" paddingX="xs">
+        <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap="sm">
+          <Text>
+            <Text color={mark.color}>{mark.glyph}</Text> <Text weight="medium">{name}</Text>
+          </Text>
+          <Text size="caption" dimColor tabular>
+            {when}
+          </Text>
+        </Box>
+        <Text size="caption" dimColor>
+          {j?.step ?? 'Starts with the session'}
+        </Text>
+      </Box>
+    )
+  }
+  const spendRow = ({ purpose, name, s }: (typeof spent)[number]) => (
+    <Box key={`hk:${purpose}`} flexDirection="column" borderStyle="round" borderColor="subtle" paddingX="sm" paddingY="xs" gap="xs">
+      <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap="sm">
+        <Text weight="medium">{name}</Text>
+        <Text size="caption" tabular>
+          {fine(s.cost)} · {Math.round((s.cost / Math.max(haiku, 1e-9)) * 100)}%
+        </Text>
+      </Box>
+      <Text size="caption" dimColor tabular>
+        {plural(s.calls, 'call')}
+        {s.failed > 0 ? ` (${s.failed} unanswered)` : ''} · about {secs(s.ms / s.calls)} each · last {ago(now - s.last)} ago
+      </Text>
+      <Text size="caption" dimColor tabular>
+        in {short(s.input)} · cache {short(s.cached + s.written)} · out {short(s.output)}
+      </Text>
+      {art(`hb:${purpose}`, bar(s.cost / Math.max(haiku, 1e-9), 'amber', Math.max(80, full - 40)), `${fine(s.cost)} of ${fine(haiku)}`)}
+    </Box>
+  )
+  const activityPanel = section(
+    'activity',
+    'Activity',
+    running.length > 0 ? `${running.map(j => j.name.toLowerCase()).join(', ')}…` : `Haiku ${plural(haikuCalls, 'call')} · ${fine(haiku)}`,
+    <Box flexDirection="column" gap="sm">
+      <Box flexDirection="column" gap="xs">
+        {JOBS.map(jobRow)}
+      </Box>
+      <Text weight="medium">
+        Haiku <Text dimColor>· {plural(haikuCalls, 'call')} · {fine(haiku)}</Text>
+      </Text>
+      {spent.length === 0 ? (
+        <Text size="caption" dimColor>
+          No Haiku calls yet in this session. Tasks are named after each turn.
+        </Text>
+      ) : (
+        <Box flexDirection="column" gap="xs">
+          {spent.length > 1 &&
+            fit(
+              'haiku-ring',
+              ring(fine(haiku), spent.map(p => ({ name: p.name, cost: p.s.cost, label: `${p.name}: ${fine(p.s.cost)}` })), full),
+              `Haiku ${fine(haiku)}: ${spent.map(p => `${p.name} ${fine(p.s.cost)}`).join(', ')}`,
+            )}
+          {spent.map(spendRow)}
+        </Box>
+      )}
+      <Text size="caption" dimColor>
+        Priced as Haiku 5.5 at list prices; not part of the session cost above.
+      </Text>
+    </Box>,
+  )
+
   // The index: a chip per section and column, with its count. Pressing one shows it alone, right under the index, and
   // pressing it again shows everything: the pane's row-counted scroll can't be trusted to land on a section on the desktop.
-  const SECTIONS = ['overview', ...(Svg ? ['chart'] : []), 'agents', 'tasks', ...COLUMNS.map(c => `col:${c.status}`), 'rules', 'links']
+  const SECTIONS = ['overview', ...(Svg ? ['chart'] : []), 'agents', 'tasks', ...COLUMNS.map(c => `col:${c.status}`), 'rules', 'links', 'activity']
   const anyOpen = SECTIONS.some(id => !closed.has(id))
   const shows = (id: string) => (s: string) => s === id || (id.startsWith('col:') && s === 'tasks')
   const isFocused = (id: string) => SECTIONS.every(s => closed.has(s) !== shows(id)(s))
@@ -574,6 +674,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     link('agents', `Agents ${ag.agents.length}`),
     link('rules', `Rules ${b.rules.length}`),
     link('links', `Connections ${b.links.length}`),
+    link('activity', running.length > 0 ? 'Activity ◌' : 'Activity'),
   ]
   const index = (
     <Box key="index" flexDirection="column" gap="xs">
@@ -667,6 +768,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ))}
         </Box>,
       )}
+      {activityPanel}
     </Box>
   )
 }

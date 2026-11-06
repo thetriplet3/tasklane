@@ -142,7 +142,7 @@ test('a new board reads the session history into tasks once', async ($, on) => {
     if (!usage) runs += 1
     return { value: { exitCode: 0, stdout: JSON.stringify(usage ? used : read), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('model.complete', () => ({ value: { isAnswered: true, text: '0 | Fix login redirect\n2 | Dark mode toggle', usage: {} } }) as never)
+  on('model.complete', () => ({ value: { isAnswered: true, text: '0 | Fix login redirect\n2 | Dark mode toggle', usage: { input_tokens: 2000, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) as never)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
@@ -155,6 +155,12 @@ test('a new board reads the session history into tasks once', async ($, on) => {
   // Main chat and each subagent, the subagent filed under the task in progress when it started.
   for (let i = 0; i < 50 && !(await ui.find({ key: 'ag:a1' })); i++) await new Promise(r => setTimeout(r, 10))
   expect(await ui.find({ type: 'Text', text: /main chat \$3\.00 · 1 subagent \$1\.00/ })).toBeDefined()
+  // The Activity section says what each read did and what the Haiku calls cost, by purpose.
+  const activity = await shown(ui as never)
+  expect(activity).toMatch(/Read 3 messages into 2 tasks/)
+  expect(activity).toMatch(/Main chat and 1 subagent/)
+  expect(await ui.find({ key: 'hk:sort' })).toBeDefined()
+  expect(activity).toMatch(/Haiku · 1 call · \$0\.0002/)
   await ui.press({ key: 'ag:a1' })
   expect(await ui.find({ key: 'sa:a1' })).toBeDefined()
   await ui.press({ key: 'back' })

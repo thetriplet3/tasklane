@@ -4,6 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Board, Link, Turn } from '../types'
 import { emptyBoard, isFollowUp, parseStarts, pastCards } from './board'
 import type { Past } from './board'
+import { ask, job } from './activity'
 import { change } from './state'
 
 const board = atom({ plugin: 'tasklane', key: 'board' } as const, emptyBoard(''), { shape: 'board-2' })
@@ -110,10 +111,12 @@ Answer only with one line per message that starts a new task, as "<number> | <ti
 // shortcut: tasks are cut where the subject changes, so going back to an older task opens a new card; merge cards if that matters.
 async function groupPast($: EngineInterface, past: Past[]): Promise<Map<number, string>> {
   const starts = new Map<number, string>()
+  const parts = Math.ceil(past.length / 250)
   for (let from = 0; from < past.length; from += 250) {
+    await job($, 'history', 'running', `Sorting ${past.length} messages into tasks${parts > 1 ? `, part ${from / 250 + 1} of ${parts}` : ''}`)
     const part = past.slice(from, from + 250)
     const list = part.map((p, i) => `${i}: ${p.text.replace(/\s+/g, ' ').slice(0, 160)}`).join('\n')
-    const reply = await $.model.complete({ model: 'haiku', prompt: `${ASK}\n\n${list}`, maxTokens: 4000 }).catch(() => undefined)
+    const reply = await ask($, 'sort', { model: 'haiku', prompt: `${ASK}\n\n${list}`, maxTokens: 4000 })
     // No answer: every message that is not a go-ahead opens its own card.
     const found = reply?.isAnswered ? parseStarts(reply.text) : new Map(part.flatMap((p, i) => (isFollowUp(p.text) ? [] : [[i, '']] as [number, string][])))
     if (!found.has(0)) found.set(0, '')
@@ -135,7 +138,11 @@ export async function importHistory($: EngineInterface) {
   const unsplit = b.cards.filter(c => c.input === undefined)
   // Imported cards saved before their chat row was kept get it from the transcript too.
   const unrowed = b.cards.filter(c => c.id.startsWith('h') && c.row === undefined)
-  if ((b.imported && unsplit.length === 0 && unrowed.length === 0) || b.session === '') return
+  if ((b.imported && unsplit.length === 0 && unrowed.length === 0) || b.session === '') {
+    if (b.imported) await job($, 'history', 'done', 'Earlier messages already read')
+    return
+  }
+  await job($, 'history', 'running', 'Reading the transcript')
   const before = b.imported ? await $.clock.now() : (b.cards[0]?.started ?? (await $.clock.now()))
   const ran = await $.process.run(['python3', '-I', '-c', READER, b.session, String(before)], { timeoutMs: 120000 }).catch(() => undefined)
   let got: Read
@@ -143,10 +150,12 @@ export async function importHistory($: EngineInterface) {
     got = JSON.parse(ran?.stdout ?? '') as Read
   } catch {
     // The reader failed (no python3, or a transcript it cannot parse); the board keeps going from now and tries again next start.
+    await job($, 'history', 'failed', ran ? "Couldn't read the transcript" : "Couldn't run python3 to read the transcript")
     return
   }
   if (!got.found || got.prompts.length === 0) {
     await change($, x => ({ ...x, imported: true }))
+    await job($, 'history', 'done', 'No earlier messages')
     return
   }
   const { prompts, title, sent, received } = got
@@ -162,6 +171,7 @@ export async function importHistory($: EngineInterface) {
         return { ...c, input: sum('input'), cached: sum('cached'), output: sum('output') }
       }),
     }))
+    await job($, 'history', 'done', `Filled in ${unsplit.length + unrowed.length} older tasks from ${prompts.length} messages`)
     return
   }
   $.ui.status(`Tasklane: sorting ${prompts.length} earlier messages into tasks`)
@@ -183,6 +193,7 @@ export async function importHistory($: EngineInterface) {
       links: merge(merge(x.links, sent, 'sent'), received, 'received'),
     }
   })
+  await job($, 'history', 'done', `Read ${prompts.length} messages into ${cards.length} tasks`)
 }
 
 // Finds the chat row (the transcript's message id) of each task's opening message, for "Go to message".
