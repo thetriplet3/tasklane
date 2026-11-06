@@ -26,7 +26,8 @@ const SAVED = {
     card('t4', 'Own delete dialog', 'done', 4.2),
   ],
   current: 't2',
-  links: [{ name: 'billing-api', sent: 3, received: 12, card: 'Cut search tool calls' }],
+  // Saved while the task still went by its opening message; the pane shows its title now.
+  links: [{ name: 'billing-api', sent: 3, received: 12, card: 'cut down the search calls', cardId: 't2' }],
   rules: ['Merge on green CI'],
   turns: [{ at: NOW - 1000, cost: 2, card: 't3' }],
   baseline: 0,
@@ -106,6 +107,7 @@ test('the saved board draws on every surface and width, and its controls work', 
   await ui.press({ key: 'fold-all' })
   expect(await ui.find({ key: 'rule' })).toBeDefined()
 
+  expect((await ui.find({ key: 'l:billing-api' }))?.text).toContain('Cut search tool calls')
   await ui.press({ key: 'l:billing-api' })
   expect(await ui.find({ type: 'Text', text: /No board for this session on this Mac/ })).toBeDefined()
   await ui.unmount()

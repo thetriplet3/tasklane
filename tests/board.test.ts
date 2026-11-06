@@ -20,7 +20,7 @@ test('peer messages and sends count per session, not per agent', async () => {
   expect(isAgentId('acme-web')).toBe(false)
   const b = { ...emptyBoard('s'), cards: [newCard('t1', 'Cut search calls', 1)], current: 't1' }
   const twice = bumpLink(bumpLink(b, 'acme-web', 'sent'), 'acme-web', 'received')
-  expect(twice.links).toEqual([{ name: 'acme-web', sent: 1, received: 1, card: 'Cut search calls' }])
+  expect(twice.links).toEqual([{ name: 'acme-web', sent: 1, received: 1, card: 'Cut search calls', cardId: 't1' }])
 })
 
 test('past messages group into cards where the model says a task starts', async () => {
