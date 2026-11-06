@@ -537,7 +537,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     { purpose: 'backlog', name: 'Naming earlier tasks' },
   ]
   // Haiku calls cost fractions of a cent, so small sums keep four places.
-  const fine = (usd: number) => (usd > 0 && usd < 0.01 ? `$${usd.toFixed(4)}` : money(usd))
+  const fine = (usd: number) => (usd > 0 && usd < 0.0001 ? '<$0.0001' : usd > 0 && usd < 0.01 ? `$${usd.toFixed(4)}` : money(usd))
   const secs = (n: number) => (n < 60000 ? `${n < 1000 ? '<1' : Math.round(n / 1000)} s` : minutes(n))
   const running = JOBS.filter(j => act.jobs[j.kind]?.state === 'running')
   const spent = PURPOSES.flatMap(p => {
