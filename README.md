@@ -10,6 +10,12 @@ A task board beside a long Claude session. It shows:
 
 Open it with `/tasklane`. Every section folds away, and the chips at the top show one section at a time.
 
+## Requirements
+
+**Python 3** has to be installed. Tasklane uses it to read the session's transcripts: earlier messages, usage by agent, and "Go to message". It tries `python3`, then `python`, then `py -3`, so a normal install works on macOS, Linux and Windows. Nothing else needs installing, because the readers use only Python's standard library.
+
+Check with `python3 --version`, or `py -3 --version` on Windows. Without Python, the Activity section shows "No Python found", and those parts of the pane stay empty.
+
 ## Install
 
 Tasklane is listed in the [Xenoviz marketplace](https://github.com/xenoviz/claude-plugins):
