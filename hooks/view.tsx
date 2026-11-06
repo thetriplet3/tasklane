@@ -73,7 +73,7 @@ async function drawBoard($: EngineInterface, e: RenderInput<'Pane'>) {
     `${money(t.cost)}, ${ago(now - t.at)} ago${titleOf(t.card) ? ` · ${titleOf(t.card)}` : ''}`
 
   // Moving between views keeps the search, the folded sections and the sort, so Back returns to the same layout.
-  const setView = (to: View) => () => update($, view, x => ({ q: x.q, closed: x.closed, sort: x.sort, ...to }))
+  const setView = (to: View) => () => update($, view, x => ({ q: x.q, closed: x.closed, sort: x.sort, days: x.days, more: x.more, ...to }))
   const q = (v.q ?? '').trim()
   const search = (text: string) => void update($, view, x => ({ ...x, q: text }))
   const move = (id: string, status: Status) => async () => {
@@ -387,6 +387,52 @@ async function drawBoard($: EngineInterface, e: RenderInput<'Pane'>) {
     )
   }
 
+  // Done keeps every task, so it is grouped by day: the newest day open, older ones folded to one line, 10 cards a day.
+  const PER_DAY = 10
+  const dayKey = (at: number) => new Date(at).toDateString()
+  const dayName = (k: string, at: number) => (k === dayKey(now) ? 'Today' : k === dayKey(now - 864e5) ? 'Yesterday' : day(at))
+  const flipped = new Set(v.days ?? [])
+  const more = new Set(v.more ?? [])
+  const flip = (list: 'days' | 'more', k: string) => () =>
+    update($, view, x => ({ ...x, [list]: (x[list] ?? []).includes(k) ? (x[list] ?? []).filter(d => d !== k) : [...(x[list] ?? []), k] }))
+  const groups = <T extends RenderChildren>(status: Status, cards: Card[], open: boolean, draw: (c: Card) => T) => {
+    if (status !== 'done') return cards.map(draw)
+    const byDay = new Map<string, Card[]>()
+    for (const c of cards) {
+      const k = dayKey(c.started)
+      const list = byDay.get(k)
+      if (list) list.push(c)
+      else byDay.set(k, [c])
+    }
+    const newest = byDay.keys().next().value
+    return [...byDay].map(([k, list]) => {
+      const isOpen = q !== '' || (k === newest) !== (open && flipped.has(k))
+      const shown = open && more.has(k) ? list : list.slice(0, PER_DAY)
+      const head = `${isOpen ? '▾' : '▸'} ${dayName(k, list[0]!.started)} · ${plural(list.length, 'task')} · ${money(list.reduce((n, c) => n + c.cost, 0))}`
+      return (
+        <Box key={`day:${k}`} flexDirection="column" gap="xs">
+          {open ? (
+            <Button key={`dayhead:${k}`} plain onPress={flip('days', k)}>
+              <Text size="caption" weight="medium">{head}</Text>
+            </Button>
+          ) : (
+            <Text size="caption" weight="medium">{head}</Text>
+          )}
+          {isOpen && shown.map(draw)}
+          {isOpen &&
+            list.length > shown.length &&
+            (open ? (
+              <Button key={`more:${k}`} plain onPress={flip('more', k)}>
+                Show {list.length - shown.length} more
+              </Button>
+            ) : (
+              <Text size="caption" dimColor>{`${list.length - shown.length} more`}</Text>
+            ))}
+        </Box>
+      )
+    })
+  }
+
   const column = (other: Board, col: (typeof COLUMNS)[number], open: boolean) => {
     const cards = other.cards.filter(c => c.status === col.status && (q === '' || matches(c, q)))
     const sum = cards.reduce((n, c) => n + c.cost, 0)
@@ -428,7 +474,7 @@ async function drawBoard($: EngineInterface, e: RenderInput<'Pane'>) {
               {q === '' ? 'Nothing here' : 'No match'}
             </Text>
           ))}
-        {!folded && [...cards].reverse().map(c => (
+        {!folded && groups(col.status, [...cards].reverse(), open, c => (
           <Box
             key={`k:${c.id}`}
             flexDirection="column"

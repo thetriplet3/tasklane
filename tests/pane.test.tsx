@@ -39,7 +39,10 @@ type Ui = { findAll: (q: { type: string }) => Promise<unknown[]> }
 const shown = async (ui: Ui) =>
   [...(await ui.findAll({ type: 'Text' })).map(n => (n as { text?: string }).text ?? ''), ...(await ui.findAll({ type: 'Svg' })).map(n => (n as { props: { alt: string } }).props.alt)].join('\n')
 
-const pane = (surface: 'desktop' | 'mobile' | 'terminal', bodyColumns: number) =>
+// The test runtime has timers; the mod's lib, without the DOM, doesn't declare them.
+declare const setTimeout: (run: (...args: never[]) => void, ms: number) => unknown
+
+const pane = <S extends 'desktop' | 'mobile' | 'terminal'>(surface: S, bodyColumns: number) =>
   ({
     plugin: 'tasklane',
     component: 'Pane',
@@ -265,5 +268,40 @@ test('a board that fails to draw shows why, with a way back, instead of a blank 
   const ui = await $.ui.mount(pane('desktop', 120))
   expect(await ui.find({ type: 'Text', text: "Tasklane couldn't draw this view" })).toBeDefined()
   expect(await ui.find({ key: 'reset' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('done tasks are grouped by day: the newest day open with 10 shown, older days folded to a line', async ($, on) => {
+  const at = (id: string, started: number) => ({ ...card(id, `Task ${id}`, 'done', 1), started, since: started })
+  const today = Array.from({ length: 12 }, (_, i) => at(`d${i}`, NOW - 12000 + i * 1000))
+  const yesterday = [at('y0', NOW - 864e5), at('y1', NOW - 864e5 + 1000)]
+  mock.store(on, { 'board:s6': { ...SAVED, session: 's6', cards: [...yesterday, ...today], current: undefined, links: [] } })
+  mock.clock(on, { now: NOW })
+  on('session.id', () => ({ value: 's6' }))
+  on('command.register', () => ({ value: { command: 'tasklane' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"found": false}', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount(pane('desktop', 120))
+  const day = (ms: number) => new Date(ms).toDateString()
+
+  expect(await ui.find({ type: 'Text', text: '▾ Today · 12 tasks · $12.00' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '▸ Yesterday · 2 tasks · $2.00' })).toBeDefined()
+  // Newest first, 10 of them; the oldest two wait behind "Show 2 more".
+  expect(await ui.find({ key: 'd11' })).toBeDefined()
+  expect(await ui.find({ key: 'd2' })).toBeDefined()
+  expect(await ui.find({ key: 'd1' })).toBeUndefined()
+  expect(await ui.find({ key: 'y0' })).toBeUndefined()
+  await ui.press({ key: `more:${day(NOW)}` })
+  expect(await ui.find({ key: 'd0' })).toBeDefined()
+  await ui.press({ key: `dayhead:${day(NOW - 864e5)}` })
+  expect(await ui.find({ key: 'y0' })).toBeDefined()
+  await ui.press({ key: `dayhead:${day(NOW)}` })
+  expect(await ui.find({ key: 'd11' })).toBeUndefined()
+  // A search opens every day, so an old task is found without unfolding anything.
+  await ui.press({ key: `dayhead:${day(NOW - 864e5)}` })
+  await ui.input({ key: 'search', text: 'Task y1' })
+  expect(await ui.find({ key: 'y1' })).toBeDefined()
   await ui.unmount()
 })
