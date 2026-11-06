@@ -12,9 +12,16 @@ Open it with `/tasklane`. Every section folds away, and the chips at the top sho
 
 ## Install
 
+Tasklane is listed in the [Xenoviz marketplace](https://github.com/xenoviz/claude-plugins):
+
 ```
-/plugin install tasklane --marketplace thetriplet3/tasklane
+/plugin marketplace add xenoviz/claude-plugins
+/plugin install tasklane@xenoviz
 ```
+
+To update later, run `claude plugin marketplace update xenoviz` and `claude plugin update tasklane@xenoviz`, then restart Claude.
+
+Installed it as `tasklane@tasklane` before? That still works. To move to the Xenoviz marketplace, uninstall it (`claude plugin uninstall tasklane@tasklane`) and install it as above.
 
 ## Good to know
 
