@@ -51,7 +51,7 @@ test('the saved board draws on every surface and width, and its controls work', 
   mock.store(on, { 'board:s1': SAVED })
   mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 's1' }))
-  on('command.register', () => ({ value: { command: 'board' } }))
+  on('command.register', () => ({ value: { command: 'tasklane' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -127,7 +127,7 @@ test('a new board reads the session history into tasks once', async ($, on) => {
   }
   let runs = 0
   on('session.id', () => ({ value: 's2' }))
-  on('command.register', () => ({ value: { command: 'board' } }))
+  on('command.register', () => ({ value: { command: 'tasklane' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const used = {
     found: true,
@@ -169,7 +169,7 @@ test('a turn ends every running card, the work shared among them', async ($, on)
   mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 's3' }))
   on('session.usage', () => ({ value: { cost: { usd: 3 } } }) as never)
-  on('command.register', () => ({ value: { command: 'board' } }))
+  on('command.register', () => ({ value: { command: 'tasklane' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.complete', () => ({ text: '' }) as never)

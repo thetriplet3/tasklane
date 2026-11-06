@@ -67,7 +67,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'board' }, async $ => {
+  on('command.run', { command: 'tasklane' }, async $ => {
     await open($)
     return { text: 'Tasklane opened.' }
   })
