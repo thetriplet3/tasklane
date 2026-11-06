@@ -70,7 +70,7 @@ export const patchCard = (b: Board, id: string | undefined, fn: (c: Card) => Car
 
 export const bumpLink = (b: Board, name: string, dir: 'sent' | 'received'): Board => {
   const had = b.links.find(l => l.name === name)
-  const link: Link = { name, sent: 0, received: 0, ...had, card: current(b)?.title ?? had?.card }
+  const link: Link = { name, sent: 0, received: 0, ...had, card: current(b)?.title ?? had?.card, cardId: current(b)?.id ?? had?.cardId }
   link[dir] += 1
   return { ...b, links: [...b.links.filter(l => l.name !== name), link] }
 }

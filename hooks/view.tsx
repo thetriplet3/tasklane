@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Color, EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import type { AgentUse, Board, Card, JobKind, Purpose, Status, Usage, View } from '../types'
+import type { AgentUse, Board, Card, JobKind, Link, Purpose, Status, Usage, View } from '../types'
 import { NO_ACTIVITY } from './activity'
 import { NO_AGENTS } from './agents'
 import { ago, day, emptyBoard, matches, minutes, money, normalize, patchCard, plural, short, split, withStatus } from './board'
@@ -65,6 +65,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const first = b.cards[0]?.started
   const maxCost = Math.max(0.01, ...b.cards.map(c => c.cost))
   const titleOf = (id?: string) => b.cards.find(c => c.id === id)?.title
+  // A connection's task by its current, model-written title. Links saved before the id was kept hold the title of
+  // that time, usually the opening message, so they're matched on that.
+  const taskOf = (l: Link) =>
+    titleOf(l.cardId) ?? b.cards.find(c => l.card !== undefined && (c.first ?? c.msgs[0]) === l.card)?.title ?? l.card
   const turnLabel = (t: { at: number; cost: number; card?: string }) =>
     `${money(t.cost)}, ${ago(now - t.at)} ago${titleOf(t.card) ? ` · ${titleOf(t.card)}` : ''}`
 
@@ -754,14 +758,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           ? 'none yet'
           : `${plural(b.links.length, 'session')}, ${plural(b.links.reduce((n, l) => n + l.sent + l.received, 0), 'message')}`,
         <Box flexDirection="column" gap="xs">
-        {fit('graph', graph(b.name || 'This session', b.links, Math.min(wide, 900)), 'Sessions this one exchanged messages with')}
+        {fit('graph', graph(b.name || 'This session', b.links.map(l => ({ ...l, card: taskOf(l) })), Math.min(wide, 900)), 'Sessions this one exchanged messages with')}
         {b.links.map(l => (
           <Box key={`lk:${l.name}`} flexDirection="row" hover={{ backgroundColor: 'subtle' }} paddingX="xs">
             <Button key={`l:${l.name}`} plain onPress={setView({ peer: l.name })}>
               {l.name}{' '}
               <Text dimColor>
                 → {l.sent} ← {l.received}
-                {l.card ? ` · ${l.card}` : ''}
+                {taskOf(l) ? ` · ${taskOf(l)}` : ''}
               </Text>
             </Button>
           </Box>

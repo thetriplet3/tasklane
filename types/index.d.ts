@@ -22,7 +22,8 @@ export type Card = {
   row?: string
 }
 
-export type Link = { name: string; sent: number; received: number; card?: string }
+// `card` is the task's title when the link last moved, kept for boards saved before `cardId`; the view shows the task's current title.
+export type Link = { name: string; sent: number; received: number; card?: string; cardId?: string }
 
 export type Turn = { at: number; cost: number; card?: string }
 
